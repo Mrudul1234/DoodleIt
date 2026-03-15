@@ -2,7 +2,7 @@
   "name": "doodleit",
   "displayName": "DoodleIt – Whiteboard & Sketchpad",
   "description": "A Miro-style infinite whiteboard inside VS Code. Draw diagrams, sketch ideas, sticky notes — right beside your code. Press Ctrl+Shift+D to open.",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "publisher": "MrudulMistri",
   "license": "MIT",
   "icon": "media/icon.png",
