@@ -1,0 +1,51 @@
+{
+  "name": "doodleit",
+  "displayName": "DoodleIt – Whiteboard & Sketchpad",
+  "description": "A Miro-style infinite whiteboard inside VS Code. Draw diagrams, sketch ideas, sticky notes — right beside your code. Press Ctrl+Shift+D to open.",
+  "version": "1.0.0",
+  "publisher": "Mrudul",
+  "icon": "media/icon.png",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "Visualization"],
+  "keywords": [
+    "whiteboard", "draw", "sketch", "doodle", "canvas", "diagram",
+    "excalidraw", "miro", "pen", "freehand", "sticky notes", "shapes",
+    "notepad", "drawing board", "brainstorm", "wireframe", "mindmap",
+    "annotation", "flowchart", "developer whiteboard", "side panel draw",
+    "scribble", "notebook", "visual notes", "code sketch", "infinite canvas"
+  ],
+  "galleryBanner": { "color": "#1a1a1a", "theme": "dark" },
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [{
+      "command": "doodleit.open",
+      "title": "DoodleIt: Open Whiteboard",
+      "icon": "$(edit)"
+    }],
+    "keybindings": [{
+      "command": "doodleit.open",
+      "key": "ctrl+shift+d",
+      "mac": "cmd+shift+d"
+    }],
+    "menus": {
+      "editor/title": [{
+        "command": "doodleit.open",
+        "group": "navigation"
+      }]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
