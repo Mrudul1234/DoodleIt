@@ -120,6 +120,3 @@ doodleit/
 
 ---
 
-## 📄 License
-
-MIT © Mrudul
