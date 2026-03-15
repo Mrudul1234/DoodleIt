@@ -2,10 +2,10 @@
 
 > A Miro-style infinite whiteboard that opens right beside your code. Draw diagrams, sketch ideas, write sticky notes — without leaving VS Code.
 
-[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-5b4fff?style=flat-square&logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
-[![Version](https://img.shields.io/visual-studio-marketplace/v/Mrudul.doodleit?style=flat-square&color=5b4fff&label=version)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/Mrudul.doodleit?style=flat-square&color=22c55e&label=installs)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-5b4fff?style=flat-square&logo=visual-studio-code&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=MrudulMistri.doodleit)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/MrudulMistri.doodleit?style=flat-square&color=5b4fff&label=version)](https://marketplace.visualstudio.com/items?itemName=MrudulMistri.doodleit)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/MrudulMistri.doodleit?style=flat-square&color=22c55e&label=installs)](https://marketplace.visualstudio.com/items?itemName=MrudulMistri.doodleit)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](https://github.com/Mrudul1234/doodleit/blob/main/LICENSE)
 
 ---
 
@@ -120,3 +120,6 @@ doodleit/
 
 ---
 
+## 📄 License
+
+MIT © Mrudul
