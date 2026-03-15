@@ -4,6 +4,7 @@
   "description": "A Miro-style infinite whiteboard inside VS Code. Draw diagrams, sketch ideas, sticky notes — right beside your code. Press Ctrl+Shift+D to open.",
   "version": "1.0.0",
   "publisher": "Mrudul",
+  "license": "MIT",
   "icon": "media/icon.png",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other", "Visualization"],
