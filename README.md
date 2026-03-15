@@ -2,8 +2,22 @@
 
 > A Miro-style infinite whiteboard that opens right beside your code. Draw diagrams, sketch ideas, write sticky notes — without leaving VS Code.
 
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/Mrudul.doodleit?style=flat-square&color=5b4fff)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/Mrudul.doodleit?style=flat-square)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
+[![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-5b4fff?style=flat-square&logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
+[![Version](https://img.shields.io/visual-studio-marketplace/v/Mrudul.doodleit?style=flat-square&color=5b4fff&label=version)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/Mrudul.doodleit?style=flat-square&color=22c55e&label=installs)](https://marketplace.visualstudio.com/items?itemName=Mrudul.doodleit)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+
+---
+
+## 📸 Screenshots
+
+**In Action — Drawing a Dijkstra Graph**
+
+![DoodleIt alongside code](media/screenshot-1.png)
+
+**Clean Empty Board**
+
+![DoodleIt empty board](media/screenshot-2.png)
 
 ---
 
@@ -94,7 +108,9 @@ doodleit/
 ├── src/extension.ts        # Extension entry — registers Ctrl+Shift+D
 ├── media/
 │   ├── whiteboard.html     # Full board UI (single self-contained file)
-│   └── icon.png            # Extension icon
+│   ├── icon.png            # Extension icon
+│   ├── screenshot-1.png    # Screenshot — in action with code
+│   └── screenshot-2.png    # Screenshot — empty board (light mode)
 ├── out/                    # Compiled JS (git-ignored)
 ├── package.json
 ├── tsconfig.json
