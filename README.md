@@ -13,11 +13,11 @@
 
 **In Action — Drawing a Dijkstra Graph**
 
-![DoodleIt alongside code](media/screenshot-1.png)
+![DoodleIt alongside code](https://raw.githubusercontent.com/Mrudul1234/doodleit/main/media/screenshot-1.png)
 
 **Clean Empty Board**
 
-![DoodleIt empty board](media/screenshot-2.png)
+![DoodleIt empty board](https://raw.githubusercontent.com/Mrudul1234/doodleit/main/media/screenshot-2.png)
 
 ---
 
