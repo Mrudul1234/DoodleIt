@@ -104,7 +104,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Space Grotesk',sys
 #col-dot{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--bdr2);transition:background .15s;}
 
 /* ── VIEWPORT ── */
-#vp{position:fixed;top:48px;left:0;right:0;bottom:0;overflow:hidden;touch-action:none;}
+#vp{position:fixed;top:0;left:0;right:0;bottom:0;overflow:hidden;touch-action:none;}
 #board{position:absolute;top:0;left:0;transform-origin:0 0;width:6000px;height:6000px;}
 #cv{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;}
 #lsvg{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;z-index:10;overflow:visible;}
@@ -224,6 +224,21 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Space Grotesk',sys
 }
 #wm-logo{font-family:'Syne',sans-serif;font-size:56px;font-weight:700;color:var(--ac);line-height:1;letter-spacing:-2px;}
 #wm-sub{font-family:'Space Grotesk',sans-serif;font-size:15px;color:var(--tx2);letter-spacing:.3px;}
+
+/* ── THEME TOGGLE SWITCH ── */
+.switch{font-size:14px;position:relative;display:inline-block;width:4em;height:2.2em;border-radius:30px;box-shadow:0 0 6px rgba(0,0,0,.15);flex-shrink:0;}
+.switch input{opacity:0;width:0;height:0;position:absolute;}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#2a2a2a;transition:.4s;border-radius:30px;overflow:hidden;}
+.slider:before{position:absolute;content:"";height:1.2em;width:1.2em;border-radius:20px;left:.5em;bottom:.5em;transition:.4s;transition-timing-function:cubic-bezier(.81,-.04,.38,1.5);box-shadow:inset 8px -4px 0 0 #fff;}
+.switch input:checked+.slider{background-color:#00a6ff;}
+.switch input:checked+.slider:before{transform:translateX(1.8em);box-shadow:inset 15px -4px 0 15px #ffcf48;}
+.star{background-color:#fff;border-radius:50%;position:absolute;width:5px;height:5px;transition:all .4s;}
+.star_1{left:2.5em;top:.5em;}
+.star_2{left:2.2em;top:1.2em;}
+.star_3{left:3em;top:.9em;}
+.switch input:checked~.slider .star{opacity:0;}
+.cloud{width:3.5em;position:absolute;bottom:-1.4em;left:-1.1em;opacity:0;transition:all .4s;}
+.switch input:checked~.slider .cloud{opacity:1;}
 </style>
 </head>
 <body>
@@ -237,7 +252,18 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Space Grotesk',sys
   <div class="sp"></div>
   <button class="hb sq" id="u-btn" title="Undo">↩</button>
   <button class="hb sq" id="r-btn" title="Redo">↪</button>
-  <button class="hb sq" id="theme-btn" title="Toggle theme">🌙</button>
+  <!-- Theme toggle switch -->
+  <label class="switch" title="Toggle theme">
+    <input type="checkbox" id="theme-chk"/>
+    <span class="slider">
+      <div class="star star_1"></div>
+      <div class="star star_2"></div>
+      <div class="star star_3"></div>
+      <svg viewBox="0 0 16 16" class="cloud_1 cloud">
+        <path transform="matrix(.77976 0 0 .78395-299.99-418.63)" fill="#fff" d="m391.84 540.91c-.421-.329-.949-.524-1.523-.524-1.351 0-2.451 1.084-2.485 2.435-1.395.526-2.388 1.88-2.388 3.466 0 1.874 1.385 3.423 3.182 3.667v.034h12.73v-.006c1.775-.104 3.182-1.584 3.182-3.395 0-1.747-1.309-3.186-2.994-3.379.007-.106.011-.214.011-.322 0-2.707-2.271-4.901-5.072-4.901-2.073 0-3.856 1.202-4.643 2.925"></path>
+      </svg>
+    </span>
+  </label>
   <button class="hb" id="exp-btn">📤 Export PNG</button>
   <button class="hb pri" id="fit-btn">⊡ Fit</button>
 </div>
@@ -335,8 +361,8 @@ const erc  = document.getElementById('erc');
 
 let SC=1, TX=0, TY=0;
 let tool='sel';
-let pCol='#1a1830', pSz=3, pOp=1;
 let isDark=false;
+let pCol=isDark?'#ffffff':'#1a1a1a', pSz=3, pOp=1;
 
 let objs=[], strokes=[], selIds=new Set(), clipbd=null;
 let hist=[], hIdx=-1, oid=1;
@@ -361,9 +387,9 @@ function n(v){ return (+v).toFixed(1); }
 // ══════════════════════════════════════════════════════
 function buildGrid(){
   cvEl.innerHTML='';
-  const bgCol  = isDark ? '#0f0e1a' : '#eeedf5';
-  const dot1   = isDark ? '#28264a' : '#b8b4d8';  // main dot — visible
-  const dot2   = isDark ? '#1e1c38' : '#d4d0ee';  // sub dot — subtle
+  const bgCol = isDark ? '#1a1a1a' : '#eeedf5';
+  const dot1  = isDark ? '#333333' : '#b8b4d8';
+  const dot2  = isDark ? '#2a2a2a' : '#d4d0ee';
 
   const bg=mkSVG('rect'); bg.setAttribute('width','6000'); bg.setAttribute('height','6000');
   bg.setAttribute('fill',bgCol); bg.id='grid-bg'; cvEl.appendChild(bg);
@@ -398,7 +424,7 @@ function applyT(){
   document.getElementById('zv').textContent=Math.round(SC*100)+'%';
 }
 function vp2b(vx,vy){ return {x:(vx-TX)/SC, y:(vy-TY)/SC}; }
-function ev2b(e){ const r=vp.getBoundingClientRect(); return vp2b(e.clientX-r.left,e.clientY-r.top); }
+function ev2b(e){ const r=vp.getBoundingClientRect(); return vp2b(e.clientX-r.left, e.clientY-r.top); }
 
 // ══════════════════════════════════════════════════════
 // SMOOTH PATH
@@ -796,8 +822,8 @@ document.getElementById('z-out').addEventListener('click',()=>{
 });
 document.getElementById('fit-btn').addEventListener('click',()=>{
   SC=1;
-  TX = Math.max(0,(vp.clientWidth -600)/2);
-  TY = Math.max(0,(vp.clientHeight-400)/2);
+  TX=(vp.clientWidth-800)/2;
+  TY=(vp.clientHeight-600)/2;
   applyT(); toast('Fit view');
 });
 
@@ -988,15 +1014,17 @@ document.getElementById('t-clr').addEventListener('click',()=>{
 // ══════════════════════════════════════════════════════
 // DARK / LIGHT THEME
 // ══════════════════════════════════════════════════════
-document.getElementById('theme-btn').addEventListener('click',()=>{
-  isDark=!isDark;
-  document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
-  document.getElementById('theme-btn').textContent=isDark?'☀️':'🌙';
-  // Rebuild grid with new colors (also updates bg rect)
+document.getElementById('theme-chk').addEventListener('change',function(){
+  isDark = !this.checked;  // checked = light (sun), unchecked = dark (stars)
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  pCol = isDark ? '#ffffff' : '#1a1a1a';
+  updDot();
   buildGrid();
   strokes.forEach(s=>addStroke(s));
-  toast(isDark?'Dark mode':'Light mode');
+  toast(isDark ? 'Dark mode' : 'Light mode');
 });
+// Init: start checked = light mode
+document.getElementById('theme-chk').checked = true;
 
 // ══════════════════════════════════════════════════════
 // EXPORT PNG — VS Code compatible (no URL.createObjectURL)
@@ -1173,7 +1201,7 @@ document.addEventListener('keydown',e=>{
   if(!e.ctrlKey&&!e.metaKey&&tm[e.key]) setTool(tm[e.key]);
   if(e.key==='+'||e.key==='='){SC=Math.min(SC*1.15,8);applyT();}
   if(e.key==='-'){SC=Math.max(SC/1.15,.05);applyT();}
-  if(e.key==='0'){SC=1;TX=Math.max(0,(vp.clientWidth-600)/2);TY=Math.max(0,(vp.clientHeight-400)/2);applyT();}
+  if(e.key==='0'){SC=1;TX=(vp.clientWidth-800)/2;TY=(vp.clientHeight-600)/2;applyT();}
 });
 document.addEventListener('keyup',e=>{});
 
@@ -1189,8 +1217,8 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 // INIT
 // ══════════════════════════════════════════════════════
 buildGrid();
-TX=Math.max(0,(vp.clientWidth-600)/2);
-TY=Math.max(0,(vp.clientHeight-400)/2);
+TX = (vp.clientWidth  - 800) / 2;
+TY = (vp.clientHeight - 600) / 2;
 applyT(); saveH(); setTool('sel'); updDot();
 </script>
 </body>
