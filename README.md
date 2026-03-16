@@ -51,6 +51,11 @@ Or: Command Palette → **"DoodleIt: Open Whiteboard"**
 ### 🌙 Themes
 - Toggle **Dark / Light** mode with the moon button
 
+### 💾 Auto-Save & Session Persistence
+- Your board is **automatically saved** as you draw — no manual save needed
+- Work survives **tab refreshes and reloads** — reopen the tab and everything is exactly where you left it
+- Board is only cleared when you **explicitly close the DoodleIt tab** in VS Code — unlike most whiteboard tools that wipe your work on every open
+
 ### 📤 Export
 - Export the full board as **PNG** (works inside VS Code's sandboxed webview)
 
