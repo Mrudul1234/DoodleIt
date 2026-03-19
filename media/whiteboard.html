@@ -584,9 +584,20 @@ function renderObj(obj){
     ta.style.fontSize=(obj.fs||20)+'px';ta.style.color=obj.col||pCol;
     ta.style.width='100%';ta.style.height=n(obj.h)+'px';
     ta.addEventListener('input',()=>{obj.text=ta.value;autoGrow(ta,obj);autoSave();});
-    ta.addEventListener('pointerdown',e=>{if(document.activeElement===ta)e.stopPropagation();else{ta.style.pointerEvents='none';}});
+    ta.addEventListener('pointerdown',e=>{
+      if(document.activeElement===ta){e.stopPropagation();}
+      else{
+        // Not yet focused: let pointer pass through so handlePD on parent can select the obj,
+        // but still stop it from reaching the viewport (prevents pen/eraser drawing through text boxes).
+        e.stopPropagation();
+        ta.style.pointerEvents='none';
+      }
+    });
     ta.addEventListener('focus',()=>{ta.style.pointerEvents='auto';ta.style.userSelect='text';ta.style.webkitUserSelect='text';});
-    ta.addEventListener('blur',()=>{ta.style.pointerEvents='none';ta.style.userSelect='none';ta.style.webkitUserSelect='none';saveH();});
+    // Bug fix: only push undo history on blur if text actually changed
+    let _taValOnFocus='';
+    ta.addEventListener('focus',()=>{_taValOnFocus=ta.value;});
+    ta.addEventListener('blur',()=>{ta.style.pointerEvents='none';ta.style.userSelect='none';ta.style.webkitUserSelect='none';if(ta.value!==_taValOnFocus)saveH();});
     el.appendChild(ta);
     requestAnimationFrame(()=>autoGrow(ta,obj));
 
@@ -690,6 +701,7 @@ function startStrokeDrag(e,s){
   if(tool!=='sel')return;e.stopPropagation();
   if(!selIds.has(s.id))selStroke(s,e.shiftKey);
   dragging=true;dSX=e.clientX;dSY=e.clientY;
+  let moved=false;
   const snap={};
   selIds.forEach(id=>{
     const st=strokes.find(x=>x.id===id);
@@ -698,6 +710,8 @@ function startStrokeDrag(e,s){
   });
   const onM=e2=>{
     if(!dragging)return;const dx=(e2.clientX-dSX)/SC,dy=(e2.clientY-dSY)/SC;
+    if(Math.abs(e2.clientX-dSX)>4||Math.abs(e2.clientY-dSY)>4)moved=true;
+    if(!moved)return;
     selIds.forEach(id=>{
       const sn=snap[id];if(!sn)return;
       const st=strokes.find(x=>x.id===id);
@@ -708,15 +722,16 @@ function startStrokeDrag(e,s){
       const ob=objs.find(x=>x.id===id);if(ob&&sn.x!==undefined){ob.x=sn.x+dx;ob.y=sn.y+dy;const el=document.getElementById('ob-'+id);if(el){el.style.left=n(ob.x)+'px';el.style.top=n(ob.y)+'px';}}
     });
   };
-  const onU=()=>{dragging=false;saveH();autoSave();window.removeEventListener('pointermove',onM);window.removeEventListener('pointerup',onU);};
+  const onU=()=>{dragging=false;if(moved){saveH();autoSave();}window.removeEventListener('pointermove',onM);window.removeEventListener('pointerup',onU);};
   window.addEventListener('pointermove',onM);window.addEventListener('pointerup',onU);
 }
 
 function handlePD(e,obj){
+  // Always stop resize handles, sticky bar/dot from bubbling to viewport
+  if(e.target.classList.contains('rh')){e.stopPropagation();return;}
+  if(e.target.classList.contains('sn-bar')){e.stopPropagation();return;}
+  if(e.target.classList.contains('sn-dot')){e.stopPropagation();return;}
   if(tool!=='sel')return;
-  if(e.target.classList.contains('rh'))return;
-  if(e.target.classList.contains('sn-bar'))return;
-  if(e.target.classList.contains('sn-dot'))return;
   const ta=e.currentTarget.querySelector('textarea.tx-ta');
   if(ta&&document.activeElement===ta){ta.blur();}
   e.stopPropagation();
@@ -785,8 +800,15 @@ function startResize(e,obj,pos){
 // ════════════════════════════════════════════════
 // VIEWPORT EVENTS
 // ════════════════════════════════════════════════
+// ── BUG FIX: block pen/line/eraser pointerdown that is the 2nd click of a dblclick ──
+let _lastDblClick=0;
+document.addEventListener('dblclick',()=>{_lastDblClick=Date.now();},true);
+
 vp.addEventListener('pointerdown',e=>{
   if(e.button!==0)return;closeAll();
+  // If a dblclick just fired within 350ms, swallow this pointerdown for drawing tools
+  // so that a quick double-click never starts a new stroke.
+  if(Date.now()-_lastDblClick<350&&(tool==='pen'||tool==='line'||tool==='eraser'))return;
   const b=ev2b(e);
   if(tool==='sel'){clearSel();selboxing=true;sbX0=b.x;sbY0=b.y;rb.style.cssText=`display:block;left:${n(b.x)}px;top:${n(b.y)}px;width:0;height:0;`;}
   else if(tool==='pen'){penDn=true;penPts=[[b.x,b.y]];startLivePen();updLivePen(penPts);}
@@ -817,26 +839,42 @@ vp.addEventListener('pointermove',e=>{
 });
 vp.addEventListener('pointerup',e=>{
   const b=ev2b(e);
-  if(selboxing){selboxing=false;rb.style.display='none';const x1=Math.min(b.x,sbX0),y1=Math.min(b.y,sbY0),x2=Math.max(b.x,sbX0),y2=Math.max(b.y,sbY0);if(x2-x1>4&&y2-y1>4){objs.forEach(o=>{if(o.x>=x1&&o.x<=x2&&o.y>=y1&&o.y<=y2){selIds.add(o.id);addHandles(o);}});strokes.forEach(s=>{const hit=s.pts?s.pts.some(p=>p[0]>=x1&&p[0]<=x2&&p[1]>=y1&&p[1]<=y2):(s.x1>=x1&&s.x1<=x2&&s.y1>=y1&&s.y1<=y2);if(hit)selStroke(s,true);});}}
+  if(selboxing){selboxing=false;rb.style.display='none';const x1=Math.min(b.x,sbX0),y1=Math.min(b.y,sbY0),x2=Math.max(b.x,sbX0),y2=Math.max(b.y,sbY0);if(x2-x1>4&&y2-y1>4){
+    // Bug fix: test full bounding box overlap, not just top-left corner point
+    objs.forEach(o=>{const ox2=(o.x||0)+(o.w||0),oy2=(o.y||0)+(o.h||0);if(ox2>=x1&&(o.x||0)<=x2&&oy2>=y1&&(o.y||0)<=y2){selIds.add(o.id);addHandles(o);}});
+    strokes.forEach(s=>{const hit=s.pts?s.pts.some(p=>p[0]>=x1&&p[0]<=x2&&p[1]>=y1&&p[1]<=y2):(s.x1>=x1&&s.x1<=x2&&s.y1>=y1&&s.y1<=y2);if(hit)selStroke(s,true);});
+  }}
   else if(penDn){penDn=false;clearLive();if(penPts.length>=2){const s={id:'o'+(oid++),type:'pen',pts:penPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}penPts=[];}
   else if(lineDn){lineDn=false;clearLive();const dx=b.x-lineSX,dy=b.y-lineSY;if(dx*dx+dy*dy>64){const s={id:'o'+(oid++),type:'line',x1:lineSX,y1:lineSY,x2:b.x,y2:b.y,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}}
-  else if(eraserDn){eraserDn=false;}
+  else if(eraserDn){eraserDn=false;if(_eraserDirty){_eraserDirty=false;saveH();autoSave();}}
 });
 vp.addEventListener('pointerleave',()=>{
   erc.style.display='none';
+  // Bug fix: also reset selboxing so rubber-band doesn't get stuck when pointer leaves vp
+  if(selboxing){selboxing=false;rb.style.display='none';}
   if(penDn){penDn=false;clearLive();if(penPts.length>=2){const s={id:'o'+(oid++),type:'pen',pts:penPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}penPts=[];}
-  if(lineDn){lineDn=false;clearLive();}if(eraserDn){eraserDn=false;}
+  if(lineDn){lineDn=false;clearLive();}if(eraserDn){eraserDn=false;if(_eraserDirty){_eraserDirty=false;saveH();autoSave();}}
+});
+// Bug fix: pointercancel (browser interrupts gesture — e.g. alt-tab, touch cancel)
+// Without this, penDn/lineDn/eraserDn stay true and next move starts phantom drawing.
+vp.addEventListener('pointercancel',()=>{
+  erc.style.display='none';
+  if(selboxing){selboxing=false;rb.style.display='none';}
+  if(penDn){penDn=false;clearLive();penPts=[];}
+  if(lineDn){lineDn=false;clearLive();}
+  if(eraserDn){eraserDn=false;_eraserDirty=false;}
 });
 vp.addEventListener('contextmenu',e=>e.preventDefault());
 
 // ════════════════════════════════════════════════
 // ERASER
 // ════════════════════════════════════════════════
+let _eraserDirty=false; // tracks if anything was erased this stroke
 function eraseAt(bx,by){
   const r=pSz*3+4;
   const before=strokes.length;
   strokes=strokes.filter(s=>{let hit=false;if(s.type==='pen')hit=s.pts.some(p=>Math.hypot(p[0]-bx,p[1]-by)<r);else if(s.type==='line')hit=ptSegDist(bx,by,s.x1,s.y1,s.x2,s.y2)<r;if(hit)removeStroke(s.id);return!hit;});
-  if(strokes.length!==before){saveH();autoSave();}
+  if(strokes.length!==before)_eraserDirty=true;
 }
 function ptSegDist(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;if(l2===0)return Math.hypot(px-ax,py-ay);const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/l2));return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
 
@@ -923,8 +961,8 @@ function dup(o){const c=dc(o);c.id='o'+(oid++);c.x=(c.x||0)+18;c.y=(c.y||0)+18;c
 document.getElementById('ci-dup').addEventListener('click',()=>{if(ctxO)dup(ctxO);closeCtx();});
 document.getElementById('ci-cp').addEventListener('click',()=>{if(ctxO)clipbd=dc(ctxO);toast('Copied');closeCtx();});
 document.getElementById('ci-pa').addEventListener('click',()=>{if(clipbd){const o=dc(clipbd);o.id='o'+(oid++);o.x=(o.x||0)+18;o.y=(o.y||0)+18;o.z=topZ()+1;objs.push(o);renderObj(o);saveH();autoSave();clearSel();selectObj(o);}closeCtx();});
-document.getElementById('ci-fr').addEventListener('click',()=>{if(ctxO){ctxO.z=topZ()+1;renderObj(ctxO);autoSave();}closeCtx();});
-document.getElementById('ci-bk').addEventListener('click',()=>{if(ctxO){const others=objs.filter(o=>o.id!==ctxO.id);const minZ=others.length?Math.min(...others.map(o=>o.z||1)):1;ctxO.z=Math.max(1,minZ-1);renderObj(ctxO);autoSave();}closeCtx();});
+document.getElementById('ci-fr').addEventListener('click',()=>{if(ctxO){ctxO.z=topZ()+1;renderObj(ctxO);saveH();autoSave();}closeCtx();});
+document.getElementById('ci-bk').addEventListener('click',()=>{if(ctxO){const others=objs.filter(o=>o.id!==ctxO.id);const minZ=others.length?Math.min(...others.map(o=>o.z||1)):1;ctxO.z=Math.max(1,minZ-1);renderObj(ctxO);saveH();autoSave();}closeCtx();});
 document.getElementById('ci-dl').addEventListener('click',()=>{if(ctxO)delObj(ctxO.id);closeCtx();});
 function delObj(id){const i=objs.findIndex(x=>x.id===id);if(i>-1)objs.splice(i,1);const el=document.getElementById('ob-'+id);if(el)el.remove();selIds.delete(id);saveH();autoSave();}
 
@@ -977,13 +1015,73 @@ cbOk.addEventListener('click',()=>{
 });
 
 // ════════════════════════════════════════════════
-// THEME
+// THEME — smart black↔white colour swap
 // ════════════════════════════════════════════════
+// Colours considered "black" (drawn in light mode) and "white" (drawn in dark mode)
+const DARK_BLACKS=['#1a1a1a','#1a1830','#000000','#0d0d0d','#111111','#222222'];
+const DARK_WHITES=['#ffffff','#f8f8f8','#eeeeee','#e8e8e8'];
+
+function isBlackish(c){
+  if(!c||typeof c!=='string')return false;
+  const h=c.toLowerCase().replace(/\s/g,'');
+  if(DARK_BLACKS.includes(h))return true;
+  // also catch any very-dark hex colours (#rrggbb where all channels < 40)
+  const m=h.match(/^#([0-9a-f]{6})$/);
+  if(m){const r=parseInt(m[1].slice(0,2),16),g=parseInt(m[1].slice(2,4),16),b=parseInt(m[1].slice(4,6),16);return r<50&&g<50&&b<50;}
+  return false;
+}
+function isWhitish(c){
+  if(!c||typeof c!=='string')return false;
+  const h=c.toLowerCase().replace(/\s/g,'');
+  if(DARK_WHITES.includes(h))return true;
+  const m=h.match(/^#([0-9a-f]{6})$/);
+  if(m){const r=parseInt(m[1].slice(0,2),16),g=parseInt(m[1].slice(2,4),16),b=parseInt(m[1].slice(4,6),16);return r>210&&g>210&&b>210;}
+  return false;
+}
+// Swap black↔white for a single colour string; returns the swapped colour or original
+function swapColour(c,towardDark){
+  if(towardDark&&isBlackish(c))return'#ffffff';
+  if(!towardDark&&isWhitish(c))return'#1a1a1a';
+  return c;
+}
+// Walk all existing strokes + objects and remap their colours
+function remapAllColours(towardDark){
+  strokes.forEach(s=>{
+    s.col=swapColour(s.col,towardDark);
+  });
+  objs.forEach(o=>{
+    if(o.type==='shape'){
+      o.sc=swapColour(o.sc,towardDark);
+      if(o.fc&&o.fc!=='none')o.fc=swapColour(o.fc,towardDark);
+    }else if(o.type==='text'){
+      o.col=swapColour(o.col,towardDark);
+    }
+    // sticky notes have their own coloured bg/tc — intentionally leave them unchanged
+  });
+}
+
 document.getElementById('theme-chk').addEventListener('change',function(){
-  isDark=!this.checked;document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
-  pCol=isDark?'#ffffff':'#1a1a1a';updDot();buildGrid();
+  const goingDark=!this.checked;
+  // Remap existing content colours BEFORE rebuilding
+  remapAllColours(goingDark);
+  isDark=goingDark;
+  document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
+  // Also swap current pen colour if it was black/white
+  pCol=swapColour(pCol,isDark);
+  updDot();
+  // Sync the colour-palette highlight to the new pCol
+  document.querySelectorAll('#col-sw .sw').forEach(sw=>{
+    sw.classList.toggle('on',sw.dataset.c===pCol);
+  });
+  buildGrid();
+  // Bug fix: buildGrid() wipes cv/stroke-g but the hit SVG is separate — clear both explicitly
   const hitSvg=document.getElementById('stroke-hit');if(hitSvg)hitSvg.innerHTML='';
-  strokes.forEach(s=>addStroke(s));toast(isDark?'Dark mode':'Light mode');autoSave();
+  // stroke-g is rebuilt inside buildGrid, so just re-add strokes to both layers
+  strokes.forEach(s=>addStroke(s));
+  // Re-render all objects so shape/text SVG reflects new colours
+  ol.innerHTML='';clearSel();objs.forEach(o=>renderObj(o));
+  toast(isDark?'Dark mode':'Light mode');
+  saveH();autoSave();
 });
 
 // ════════════════════════════════════════════════
@@ -1029,13 +1127,67 @@ document.addEventListener('keydown',e=>{
   if(confirmOverlay.classList.contains('on')){if(e.key==='Escape')confirmOverlay.classList.remove('on');if(e.key==='Enter')cbOk.click();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo();return;}
   if((e.ctrlKey||e.metaKey)&&(e.key==='y'||(e.shiftKey&&e.key==='Z'))){e.preventDefault();redo();return;}
-  if((e.ctrlKey||e.metaKey)&&e.key==='c'){if(selIds.size===1){const o=objs.find(x=>x.id===selIds.values().next().value);if(o){clipbd=dc(o);toast('Copied');}}return;}
-  if((e.ctrlKey||e.metaKey)&&e.key==='v'){if(clipbd){const o=dc(clipbd);o.id='o'+(oid++);o.x=(o.x||0)+18;o.y=(o.y||0)+18;o.z=topZ()+1;objs.push(o);renderObj(o);saveH();autoSave();clearSel();selectObj(o);}return;}
-  if((e.ctrlKey||e.metaKey)&&e.key==='d'){e.preventDefault();if(selIds.size===1){const o=objs.find(x=>x.id===selIds.values().next().value);if(o)dup(o);}return;}
-  if(e.key==='Delete'||e.key==='Backspace'){const toSave=selIds.size>0;selIds.forEach(id=>{const si=strokes.findIndex(s=>s.id===id);if(si>-1){removeStroke(id);strokes.splice(si,1);}else delObj(id);});if(toSave){selIds.clear();saveH();autoSave();}return;}
+  if((e.ctrlKey||e.metaKey)&&e.key==='c'){
+    if(selIds.size===1){
+      const id=selIds.values().next().value;
+      const o=objs.find(x=>x.id===id);
+      const s=strokes.find(x=>x.id===id);
+      if(o){clipbd=dc(o);toast('Copied');}
+      else if(s){clipbd=dc(s);toast('Copied');}
+    }return;
+  }
+  if((e.ctrlKey||e.metaKey)&&e.key==='v'){
+    if(clipbd){
+      const c=dc(clipbd);c.id='o'+(oid++);
+      if(c.type==='pen'||c.type==='line'){
+        // Stroke paste: offset points/coords
+        if(c.type==='pen'){c.pts=c.pts.map(p=>[p[0]+18,p[1]+18]);}
+        else{c.x1+=18;c.y1+=18;c.x2+=18;c.y2+=18;}
+        strokes.push(c);addStroke(c);saveH();autoSave();clearSel();selStroke(c,false);
+      } else {
+        c.x=(c.x||0)+18;c.y=(c.y||0)+18;c.z=topZ()+1;objs.push(c);renderObj(c);saveH();autoSave();clearSel();selectObj(c);
+      }
+    }return;
+  }
+  if((e.ctrlKey||e.metaKey)&&e.key==='d'){
+    e.preventDefault();
+    if(selIds.size===1){
+      const id=selIds.values().next().value;
+      const o=objs.find(x=>x.id===id);
+      const s=strokes.find(x=>x.id===id);
+      if(o)dup(o);
+      else if(s){
+        const c=dc(s);c.id='o'+(oid++);
+        if(c.type==='pen'){c.pts=c.pts.map(p=>[p[0]+18,p[1]+18]);}
+        else{c.x1+=18;c.y1+=18;c.x2+=18;c.y2+=18;}
+        strokes.push(c);addStroke(c);saveH();autoSave();clearSel();selStroke(c,false);
+      }
+    }return;
+  }
+  if(e.key==='Delete'||e.key==='Backspace'){
+    if(selIds.size===0)return;
+    selIds.forEach(id=>{
+      const si=strokes.findIndex(s=>s.id===id);
+      if(si>-1){removeStroke(id);strokes.splice(si,1);}
+      else{
+        // Inline deletion (bypass delObj which calls saveH per-item)
+        const i=objs.findIndex(x=>x.id===id);if(i>-1)objs.splice(i,1);
+        const el=document.getElementById('ob-'+id);if(el)el.remove();
+      }
+    });
+    selIds.clear();saveH();autoSave();return;
+  }
   if(e.key==='Escape'){clearSel();return;}
-  const tm={v:'sel',p:'pen',n:'sticky',t:'text',a:'line',e:'eraser'};
-  if(!e.ctrlKey&&!e.metaKey&&tm[e.key])setTool(tm[e.key]);
+  const tm={v:'sel',p:'pen',s:'shapes',n:'sticky',t:'text',a:'line',e:'eraser'};
+  if(!e.ctrlKey&&!e.metaKey&&tm[e.key]){
+    if(tm[e.key]==='shapes'){
+      // Trigger the shapes popup the same way the toolbar button does
+      const shBtn=document.querySelector('.tbt[data-t="shapes"]');
+      if(shBtn)shBtn.click();
+    } else {
+      setTool(tm[e.key]);
+    }
+  }
   if(e.key==='+'||e.key==='='){SC=Math.min(SC*1.15,8);applyT();}
   if(e.key==='-'){SC=Math.max(SC/1.15,.05);applyT();}
   if(e.key==='0'){SC=1;TX=(vp.clientWidth-800)/2;TY=(vp.clientHeight-600)/2;applyT();}
@@ -1070,6 +1222,11 @@ if(restored){
   updDot();
   document.getElementById('sz-r').value=pSz;
   document.getElementById('sz-v').textContent=pSz;
+  // Bug fix: also restore opacity slider (was always showing 100% regardless of saved pOp)
+  const opSlider=document.getElementById('op-r');
+  const opVal=Math.round(pOp*100);
+  opSlider.value=opVal;
+  document.getElementById('op-v').textContent=opVal+'%';
   saveH();
   toast('Board restored ✓');
   saveBadge.textContent='✓ Saved';saveBadge.classList.add('saved');
