@@ -63,7 +63,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Space Grotesk',sys
 #cv{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;}
 #cv #stroke-g{pointer-events:none;}
 #stroke-hit{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;z-index:25;overflow:visible;}
-#lsvg{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;z-index:10;overflow:visible;}
+#lsvg{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;z-index:28;overflow:visible;}
 #ol{position:absolute;top:0;left:0;width:6000px;height:6000px;z-index:20;}
 #rb{position:absolute;border:1.5px solid var(--ac);background:var(--ac)0a;display:none;pointer-events:none;z-index:30;border-radius:3px;}
 #board-border{position:absolute;top:0;left:0;width:6000px;height:6000px;pointer-events:none;z-index:5;box-shadow:inset 0 0 0 2px var(--canvas-border);border-radius:4px;}
@@ -96,7 +96,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Space Grotesk',sys
 .im img{width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;}
 
 /* RESIZE HANDLES */
-.rh{position:absolute;width:9px;height:9px;background:var(--s);border:2px solid var(--ac);border-radius:2px;z-index:10;transition:transform .1s,background .1s,border-color .1s;}
+.rh{position:absolute;width:9px;height:9px;background:var(--s);border:2px solid var(--ac);border-radius:2px;z-index:30;transition:transform .1s,background .1s,border-color .1s;}
 .rh:hover{transform:scale(1.5)!important;background:var(--ac);}
 /* FIX: keep handle blue while actively dragging — no flicker */
 .rh.active{background:var(--ac)!important;border-color:var(--ac)!important;transform:scale(1.4)!important;transition:none!important;}
@@ -167,7 +167,9 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'Space Grotesk',sys
 #cb-cancel{background:var(--s2);color:var(--tx2);}#cb-cancel:hover{background:var(--s3);}
 #cb-ok{background:#e53e3e;color:#fff;border-color:#e53e3e;}#cb-ok:hover{background:#c53030;}
 
-/* WATERMARK */
+/* ── Draw-mode: pen/line/eraser/sticky/text — objects must not intercept pointer ── */
+#board.draw-mode #ol,
+#board.draw-mode #stroke-hit{pointer-events:none!important;}
 #wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;opacity:.15;user-select:none;}
 #wm-logo{font-family:'Syne',sans-serif;font-size:56px;font-weight:700;color:var(--ac);line-height:1;letter-spacing:-2px;}
 #wm-sub{font-family:'Space Grotesk',sans-serif;font-size:15px;color:var(--tx2);letter-spacing:.3px;}
@@ -467,16 +469,31 @@ document.getElementById('vs-up').addEventListener('click',()=>{TY=Math.min(0,TY+
 document.getElementById('vs-down').addEventListener('click',()=>{TY=Math.max(vp.clientHeight-6000*SC,TY-180);applyT();});
 
 // ════════════════════════════════════════════════
-// SMOOTH PATH
+// SMOOTH PATH — Catmull-Rom with tension 0.5
+// Uses chordal parameterization to prevent cusps on fast/sharp strokes.
 // ════════════════════════════════════════════════
 function catmull(pts){
   if(!pts||pts.length<2)return'';
-  let d=`M${n(pts[0][0])} ${n(pts[0][1])}`;
-  if(pts.length===2)return d+` L${n(pts[1][0])} ${n(pts[1][1])}`;
-  for(let i=0;i<pts.length-1;i++){
-    const p0=pts[Math.max(i-1,0)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(i+2,pts.length-1)];
-    const c1x=p1[0]+(p2[0]-p0[0])/6,c1y=p1[1]+(p2[1]-p0[1])/6;
-    const c2x=p2[0]-(p3[0]-p1[0])/6,c2y=p2[1]-(p3[1]-p1[1])/6;
+  if(pts.length===2)return`M${n(pts[0][0])} ${n(pts[0][1])} L${n(pts[1][0])} ${n(pts[1][1])}`;
+  // Simplify the path slightly to remove nearly-collinear points (reduces jitter)
+  const filtered=[pts[0]];
+  for(let i=1;i<pts.length-1;i++){
+    const prev=filtered[filtered.length-1],cur=pts[i],next=pts[i+1];
+    // Keep point if it deviates from the line prev→next by >0.3 board units
+    const dx=next[0]-prev[0],dy=next[1]-prev[1],len=Math.sqrt(dx*dx+dy*dy);
+    if(len<0.001){filtered.push(cur);continue;}
+    const t=((cur[0]-prev[0])*dx+(cur[1]-prev[1])*dy)/(len*len);
+    const projX=prev[0]+t*dx,projY=prev[1]+t*dy;
+    if(Math.hypot(cur[0]-projX,cur[1]-projY)>0.3)filtered.push(cur);
+  }
+  filtered.push(pts[pts.length-1]);
+  if(filtered.length<2)return`M${n(pts[0][0])} ${n(pts[0][1])} L${n(pts[pts.length-1][0])} ${n(pts[pts.length-1][1])}`;
+  let d=`M${n(filtered[0][0])} ${n(filtered[0][1])}`;
+  const alpha=0.5; // tension
+  for(let i=0;i<filtered.length-1;i++){
+    const p0=filtered[Math.max(i-1,0)],p1=filtered[i],p2=filtered[i+1],p3=filtered[Math.min(i+2,filtered.length-1)];
+    const c1x=p1[0]+(p2[0]-p0[0])*alpha/3,c1y=p1[1]+(p2[1]-p0[1])*alpha/3;
+    const c2x=p2[0]-(p3[0]-p1[0])*alpha/3,c2y=p2[1]-(p3[1]-p1[1])*alpha/3;
     d+=` C${n(c1x)} ${n(c1y)} ${n(c2x)} ${n(c2y)} ${n(p2[0])} ${n(p2[1])}`;
   }
   return d;
@@ -515,8 +532,16 @@ function removeStroke(id){
 // ════════════════════════════════════════════════
 // LIVE DRAWING
 // ════════════════════════════════════════════════
+let _rafPending=false;
 function startLivePen(){lsvg.innerHTML='';const p=mkSVG('path');p.id='lp';p.setAttribute('stroke',pCol);p.setAttribute('stroke-width',pSz);p.setAttribute('stroke-linecap','round');p.setAttribute('stroke-linejoin','round');p.setAttribute('fill','none');p.setAttribute('opacity',pOp);lsvg.appendChild(p);liveEl=p;}
-function updLivePen(pts){if(liveEl)liveEl.setAttribute('d',catmull(pts));}
+function updLivePen(pts){
+  if(_rafPending)return;
+  _rafPending=true;
+  // Snapshot the array by value so a reset of penPts between RAF schedule and execution
+  // doesn't cause catmull to run on a shorter or empty array.
+  const snap=pts.slice();
+  requestAnimationFrame(()=>{_rafPending=false;if(liveEl)liveEl.setAttribute('d',catmull(snap));});
+}
 function startLiveLine(x1,y1){lsvg.innerHTML='';const g=mkSVG('g');g.id='llg';const l=mkSVG('line');l.id='ll';l.setAttribute('x1',n(x1));l.setAttribute('y1',n(y1));l.setAttribute('x2',n(x1));l.setAttribute('y2',n(y1));l.setAttribute('stroke',pCol);l.setAttribute('stroke-width',pSz);l.setAttribute('stroke-linecap','round');l.setAttribute('opacity',pOp);g.appendChild(l);lsvg.appendChild(g);liveEl=l;}
 function updLiveLine(x2,y2){
   if(!liveEl)return;
@@ -532,7 +557,7 @@ function updLiveLine(x2,y2){
   poly.setAttribute('fill',pCol);poly.setAttribute('opacity',pOp);
   const g=document.getElementById('llg');if(g)g.appendChild(poly);
 }
-function clearLive(){lsvg.innerHTML='';liveEl=null;}
+function clearLive(){lsvg.innerHTML='';liveEl=null;_rafPending=false;}
 
 // ════════════════════════════════════════════════
 // TEXT AUTO-GROW
@@ -567,7 +592,7 @@ function renderObj(obj){
     const ta=document.createElement('textarea');ta.className='sn-ta';ta.value=obj.text||'';ta.placeholder='Write here…';ta.style.color=obj.tc;
     if(obj.fs)ta.style.fontSize=obj.fs+'px';
     ta.addEventListener('input',()=>{obj.text=ta.value;autoSave();});
-    ta.addEventListener('pointerdown',e=>e.stopPropagation());
+    ta.addEventListener('pointerdown',e=>{if(tool==='sel')e.stopPropagation();});
     const ft=document.createElement('div');ft.className='sn-foot';
     const dot=document.createElement('div');dot.className='sn-dot';dot.style.background=obj.tc;
     dot.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();});
@@ -585,18 +610,12 @@ function renderObj(obj){
     ta.style.width='100%';ta.style.height=n(obj.h)+'px';
     ta.addEventListener('input',()=>{obj.text=ta.value;autoGrow(ta,obj);autoSave();});
     ta.addEventListener('pointerdown',e=>{
+      if(tool!=='sel')return;
       if(document.activeElement===ta){e.stopPropagation();}
-      else{
-        // Not yet focused: let pointer pass through so handlePD on parent can select the obj,
-        // but still stop it from reaching the viewport (prevents pen/eraser drawing through text boxes).
-        e.stopPropagation();
-        ta.style.pointerEvents='none';
-      }
+      else{e.stopPropagation();ta.style.pointerEvents='none';}
     });
-    ta.addEventListener('focus',()=>{ta.style.pointerEvents='auto';ta.style.userSelect='text';ta.style.webkitUserSelect='text';});
-    // Bug fix: only push undo history on blur if text actually changed
+    ta.addEventListener('focus',()=>{ta.style.pointerEvents='auto';ta.style.userSelect='text';ta.style.webkitUserSelect='text';_taValOnFocus=ta.value;});
     let _taValOnFocus='';
-    ta.addEventListener('focus',()=>{_taValOnFocus=ta.value;});
     ta.addEventListener('blur',()=>{ta.style.pointerEvents='none';ta.style.userSelect='none';ta.style.webkitUserSelect='none';if(ta.value!==_taValOnFocus)saveH();});
     el.appendChild(ta);
     requestAnimationFrame(()=>autoGrow(ta,obj));
@@ -727,7 +746,6 @@ function startStrokeDrag(e,s){
 }
 
 function handlePD(e,obj){
-  // Always stop resize handles, sticky bar/dot from bubbling to viewport
   if(e.target.classList.contains('rh')){e.stopPropagation();return;}
   if(e.target.classList.contains('sn-bar')){e.stopPropagation();return;}
   if(e.target.classList.contains('sn-dot')){e.stopPropagation();return;}
@@ -767,11 +785,10 @@ function handlePD(e,obj){
 }
 
 // ════════════════════════════════════════════════
-// RESIZE — FIX: handle stays solid blue while dragging
+// RESIZE
 // ════════════════════════════════════════════════
 function startResize(e,obj,pos){
   e.stopPropagation();e.preventDefault();
-  // Mark this handle as actively being dragged → CSS .active keeps it blue, no flicker
   const handle=e.currentTarget;
   handle.classList.add('active');
   const sx=e.clientX,sy=e.clientY,st={x:obj.x,y:obj.y,w:obj.w,h:obj.h};
@@ -782,12 +799,10 @@ function startResize(e,obj,pos){
     if(pos.includes('w')){obj.x=st.x+dx;obj.w=Math.max(50,st.w-dx);}
     if(pos.includes('n')){obj.y=st.y+dy;obj.h=Math.max(30,st.h-dy);}
     renderObj(obj);addHandles(obj);
-    // Re-apply active class to the newly rendered handle after renderObj recreates DOM
     const newHandle=document.querySelector(`.rh.${pos}.rh-${obj.id}`);
     if(newHandle)newHandle.classList.add('active');
   };
   const onU=()=>{
-    // Clean up active class (handle may have been recreated by renderObj, find it fresh)
     const finalHandle=document.querySelector(`.rh.${pos}.rh-${obj.id}`);
     if(finalHandle)finalHandle.classList.remove('active');
     saveH();autoSave();
@@ -800,20 +815,20 @@ function startResize(e,obj,pos){
 // ════════════════════════════════════════════════
 // VIEWPORT EVENTS
 // ════════════════════════════════════════════════
-// ── BUG FIX: block pen/line/eraser pointerdown that is the 2nd click of a dblclick ──
-let _lastDblClick=0;
-document.addEventListener('dblclick',()=>{_lastDblClick=Date.now();},true);
-
+// ── Pen drawing: use e.detail to distinguish real single clicks from the synthetic
+// pointerdown that fires as part of a dblclick sequence on objects. For drawing tools
+// we only skip e.detail===2 events (the second click of a double-click) on object
+// targets — canvas area always passes through so rapid strokes are never blocked.
 vp.addEventListener('pointerdown',e=>{
-  if(e.button!==0)return;closeAll();
-  // If a dblclick just fired within 350ms, swallow this pointerdown for drawing tools
-  // so that a quick double-click never starts a new stroke.
-  if(Date.now()-_lastDblClick<350&&(tool==='pen'||tool==='line'||tool==='eraser'))return;
+  if(e.button!==0)return;
+  // Only block the 2nd pointerdown of a dblclick IF it lands on an interactive object.
+  // Never block on bare canvas — this is what caused "pen stops writing on fast clicks".
+  if(e.detail>=2&&(tool==='pen'||tool==='line'||tool==='eraser')&&e.target.closest('#ol,#stroke-hit'))return;
   const b=ev2b(e);
   if(tool==='sel'){clearSel();selboxing=true;sbX0=b.x;sbY0=b.y;rb.style.cssText=`display:block;left:${n(b.x)}px;top:${n(b.y)}px;width:0;height:0;`;}
-  else if(tool==='pen'){penDn=true;penPts=[[b.x,b.y]];startLivePen();updLivePen(penPts);}
-  else if(tool==='line'){lineDn=true;lineSX=b.x;lineSY=b.y;startLiveLine(b.x,b.y);}
-  else if(tool==='eraser'){eraserDn=true;eraseAt(b.x,b.y);}
+  else if(tool==='pen'){penDn=true;penPts=[[b.x,b.y]];startLivePen();updLivePen(penPts);vp.setPointerCapture(e.pointerId);}
+  else if(tool==='line'){lineDn=true;lineSX=b.x;lineSY=b.y;startLiveLine(b.x,b.y);vp.setPointerCapture(e.pointerId);}
+  else if(tool==='eraser'){eraserDn=true;eraseAt(b.x,b.y);vp.setPointerCapture(e.pointerId);}
   else if(tool==='sticky'){
     const o={id:'o'+(oid++),type:'sticky',x:b.x-90,y:b.y-70,w:180,h:160,bg:SNCS[0].bg,tc:SNCS[0].tc,text:'',z:topZ()+1};
     objs.push(o);renderObj(o);saveH();autoSave();clearSel();selectObj(o);
@@ -830,46 +845,64 @@ vp.addEventListener('pointermove',e=>{
   const b=ev2b(e);
   function overAnyUI(){const panels=['#tb','#hdr','#zbar','#hscroll','#vscroll'];return panels.some(sel=>{const el=document.querySelector(sel);if(!el)return false;const r=el.getBoundingClientRect();return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;});}
   if(tool==='eraser'){
-    if(overAnyUI()){erc.style.display='none';}
-    else{erc.style.display='block';erc.style.left=e.clientX+'px';erc.style.top=e.clientY+'px';const sz=Math.max(12,pSz*2.5*SC);erc.style.width=sz+'px';erc.style.height=sz+'px';}
+    // While actively erasing (pointer captured), always show cursor regardless of UI overlap
+    if(eraserDn||!overAnyUI()){erc.style.display='block';erc.style.left=e.clientX+'px';erc.style.top=e.clientY+'px';const sz=Math.max(12,pSz*2.5*SC);erc.style.width=sz+'px';erc.style.height=sz+'px';}
+    else{erc.style.display='none';}
   }
   if(selboxing){const x=Math.min(b.x,sbX0),y=Math.min(b.y,sbY0);rb.style.left=n(x)+'px';rb.style.top=n(y)+'px';rb.style.width=n(Math.abs(b.x-sbX0))+'px';rb.style.height=n(Math.abs(b.y-sbY0))+'px';}
-  else if(penDn){const last=penPts[penPts.length-1];const dx=b.x-last[0],dy=b.y-last[1];if(dx*dx+dy*dy>1.2/(SC*SC)){penPts.push([b.x,b.y]);updLivePen(penPts);}}
-  else if(lineDn){updLiveLine(b.x,b.y);}else if(eraserDn&&!overAnyUI()){eraseAt(b.x,b.y);}
+  else if(penDn){
+    const last=penPts[penPts.length-1];
+    // Use screen-space distance for consistent feel at any zoom level (2px threshold)
+    const minDist=2/SC;
+    const dx=b.x-last[0],dy=b.y-last[1];
+    if(dx*dx+dy*dy>minDist*minDist){penPts.push([b.x,b.y]);updLivePen(penPts);}
+  }
+  else if(lineDn){updLiveLine(b.x,b.y);}else if(eraserDn){eraseAt(b.x,b.y);}
 });
 vp.addEventListener('pointerup',e=>{
   const b=ev2b(e);
   if(selboxing){selboxing=false;rb.style.display='none';const x1=Math.min(b.x,sbX0),y1=Math.min(b.y,sbY0),x2=Math.max(b.x,sbX0),y2=Math.max(b.y,sbY0);if(x2-x1>4&&y2-y1>4){
-    // Bug fix: test full bounding box overlap, not just top-left corner point
     objs.forEach(o=>{const ox2=(o.x||0)+(o.w||0),oy2=(o.y||0)+(o.h||0);if(ox2>=x1&&(o.x||0)<=x2&&oy2>=y1&&(o.y||0)<=y2){selIds.add(o.id);addHandles(o);}});
     strokes.forEach(s=>{const hit=s.pts?s.pts.some(p=>p[0]>=x1&&p[0]<=x2&&p[1]>=y1&&p[1]<=y2):(s.x1>=x1&&s.x1<=x2&&s.y1>=y1&&s.y1<=y2);if(hit)selStroke(s,true);});
   }}
-  else if(penDn){penDn=false;clearLive();if(penPts.length>=2){const s={id:'o'+(oid++),type:'pen',pts:penPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}penPts=[];}
+  else if(penDn){penDn=false;clearLive();
+    if(penPts.length>=2){
+      const s={id:'o'+(oid++),type:'pen',pts:penPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();
+    } else if(penPts.length===1){
+      // Single tap — draw a small dot so the user sees feedback
+      const pt=penPts[0],r=pSz/2;
+      const dotPts=[[pt[0]-r*0.01,pt[1]],[pt[0],pt[1]],[pt[0]+r*0.01,pt[1]]];
+      const s={id:'o'+(oid++),type:'pen',pts:dotPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();
+    }
+    penPts=[];
+  }
   else if(lineDn){lineDn=false;clearLive();const dx=b.x-lineSX,dy=b.y-lineSY;if(dx*dx+dy*dy>64){const s={id:'o'+(oid++),type:'line',x1:lineSX,y1:lineSY,x2:b.x,y2:b.y,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}}
   else if(eraserDn){eraserDn=false;if(_eraserDirty){_eraserDirty=false;saveH();autoSave();}}
 });
-vp.addEventListener('pointerleave',()=>{
+vp.addEventListener('pointerleave',e=>{
+  // With setPointerCapture active (penDn/lineDn/eraserDn), pointerleave should not fire.
+  // Guard anyway: if any drawing state is active, pointer is captured — ignore leave.
+  if(penDn||lineDn||eraserDn)return;
   erc.style.display='none';
-  // Bug fix: also reset selboxing so rubber-band doesn't get stuck when pointer leaves vp
   if(selboxing){selboxing=false;rb.style.display='none';}
-  if(penDn){penDn=false;clearLive();if(penPts.length>=2){const s={id:'o'+(oid++),type:'pen',pts:penPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}penPts=[];}
-  if(lineDn){lineDn=false;clearLive();}if(eraserDn){eraserDn=false;if(_eraserDirty){_eraserDirty=false;saveH();autoSave();}}
 });
-// Bug fix: pointercancel (browser interrupts gesture — e.g. alt-tab, touch cancel)
-// Without this, penDn/lineDn/eraserDn stay true and next move starts phantom drawing.
-vp.addEventListener('pointercancel',()=>{
+vp.addEventListener('pointercancel',e=>{
   erc.style.display='none';
   if(selboxing){selboxing=false;rb.style.display='none';}
-  if(penDn){penDn=false;clearLive();penPts=[];}
+  // On cancel (e.g. stylus lifted mid-stroke), commit what we have rather than discard
+  if(penDn){penDn=false;clearLive();
+    if(penPts.length>=2){const s={id:'o'+(oid++),type:'pen',pts:penPts,col:pCol,sw:pSz,op:pOp};strokes.push(s);addStroke(s);saveH();autoSave();}
+    penPts=[];
+  }
   if(lineDn){lineDn=false;clearLive();}
-  if(eraserDn){eraserDn=false;_eraserDirty=false;}
+  if(eraserDn){eraserDn=false;if(_eraserDirty){_eraserDirty=false;saveH();autoSave();}}
 });
 vp.addEventListener('contextmenu',e=>e.preventDefault());
 
 // ════════════════════════════════════════════════
 // ERASER
 // ════════════════════════════════════════════════
-let _eraserDirty=false; // tracks if anything was erased this stroke
+let _eraserDirty=false;
 function eraseAt(bx,by){
   const r=pSz*3+4;
   const before=strokes.length;
@@ -895,8 +928,11 @@ document.getElementById('fit-btn').addEventListener('click',()=>{SC=1;TX=(vp.cli
 // TOOLS
 // ════════════════════════════════════════════════
 function setTool(t){tool=t;document.querySelectorAll('.tbt[data-t]').forEach(b=>b.classList.toggle('on',b.dataset.t===t));erc.style.display='none';setCursor();}
-function setCursor(){const m={sel:'default',pen:'crosshair',line:'crosshair',text:'text',sticky:'cell',eraser:'none'};vp.style.cursor=m[tool]||'crosshair';}
-// ── Shared floating toolbar tooltip ──────────────────────────────────────────
+function setCursor(){
+  const m={sel:'default',pen:'crosshair',line:'crosshair',text:'text',sticky:'cell',eraser:'none'};
+  vp.style.cursor=m[tool]||'crosshair';
+  board.classList.toggle('draw-mode', tool!=='sel');
+}
 const tbTip=document.getElementById('tb-tip');
 let tbTipTimer;
 document.querySelectorAll('#tb .tbt').forEach(btn=>{
@@ -966,7 +1002,12 @@ document.getElementById('ci-bk').addEventListener('click',()=>{if(ctxO){const ot
 document.getElementById('ci-dl').addEventListener('click',()=>{if(ctxO)delObj(ctxO.id);closeCtx();});
 function delObj(id){const i=objs.findIndex(x=>x.id===id);if(i>-1)objs.splice(i,1);const el=document.getElementById('ob-'+id);if(el)el.remove();selIds.delete(id);saveH();autoSave();}
 
-document.addEventListener('pointerdown',e=>{if(!e.target.closest('#tb,#hdr,#zbar,#hscroll,#vscroll,.pop,#ctx,#confirm-overlay'))closeAll();});
+// Close all popups on any pointerdown anywhere (capture phase so it always fires
+// before stopPropagation in child handlers). Skip during active drawing strokes.
+document.addEventListener('pointerdown',e=>{
+  if(penDn||lineDn||eraserDn)return;
+  if(!e.target.closest('#tb,#hdr,#zbar,#hscroll,#vscroll,.pop,#ctx,#confirm-overlay'))closeAll();
+},true);
 function closeAll(){['pop-col','pop-sz','pop-sh','pop-sn'].forEach(id=>document.getElementById(id).style.display='none');closeCtx();}
 ['pop-col','pop-sz','pop-sh','pop-sn','ctx'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',e=>e.stopPropagation()));
 function posPopup(p,btn){const r=btn.getBoundingClientRect();p.style.left=(r.right+8)+'px';p.style.top=Math.min(r.top,window.innerHeight-300)+'px';}
@@ -1015,9 +1056,8 @@ cbOk.addEventListener('click',()=>{
 });
 
 // ════════════════════════════════════════════════
-// THEME — smart black↔white colour swap
+// THEME
 // ════════════════════════════════════════════════
-// Colours considered "black" (drawn in light mode) and "white" (drawn in dark mode)
 const DARK_BLACKS=['#1a1a1a','#1a1830','#000000','#0d0d0d','#111111','#222222'];
 const DARK_WHITES=['#ffffff','#f8f8f8','#eeeeee','#e8e8e8'];
 
@@ -1025,7 +1065,6 @@ function isBlackish(c){
   if(!c||typeof c!=='string')return false;
   const h=c.toLowerCase().replace(/\s/g,'');
   if(DARK_BLACKS.includes(h))return true;
-  // also catch any very-dark hex colours (#rrggbb where all channels < 40)
   const m=h.match(/^#([0-9a-f]{6})$/);
   if(m){const r=parseInt(m[1].slice(0,2),16),g=parseInt(m[1].slice(2,4),16),b=parseInt(m[1].slice(4,6),16);return r<50&&g<50&&b<50;}
   return false;
@@ -1038,47 +1077,30 @@ function isWhitish(c){
   if(m){const r=parseInt(m[1].slice(0,2),16),g=parseInt(m[1].slice(2,4),16),b=parseInt(m[1].slice(4,6),16);return r>210&&g>210&&b>210;}
   return false;
 }
-// Swap black↔white for a single colour string; returns the swapped colour or original
 function swapColour(c,towardDark){
   if(towardDark&&isBlackish(c))return'#ffffff';
   if(!towardDark&&isWhitish(c))return'#1a1a1a';
   return c;
 }
-// Walk all existing strokes + objects and remap their colours
 function remapAllColours(towardDark){
-  strokes.forEach(s=>{
-    s.col=swapColour(s.col,towardDark);
-  });
+  strokes.forEach(s=>{s.col=swapColour(s.col,towardDark);});
   objs.forEach(o=>{
-    if(o.type==='shape'){
-      o.sc=swapColour(o.sc,towardDark);
-      if(o.fc&&o.fc!=='none')o.fc=swapColour(o.fc,towardDark);
-    }else if(o.type==='text'){
-      o.col=swapColour(o.col,towardDark);
-    }
-    // sticky notes have their own coloured bg/tc — intentionally leave them unchanged
+    if(o.type==='shape'){o.sc=swapColour(o.sc,towardDark);if(o.fc&&o.fc!=='none')o.fc=swapColour(o.fc,towardDark);}
+    else if(o.type==='text'){o.col=swapColour(o.col,towardDark);}
   });
 }
 
 document.getElementById('theme-chk').addEventListener('change',function(){
   const goingDark=!this.checked;
-  // Remap existing content colours BEFORE rebuilding
   remapAllColours(goingDark);
   isDark=goingDark;
   document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
-  // Also swap current pen colour if it was black/white
   pCol=swapColour(pCol,isDark);
   updDot();
-  // Sync the colour-palette highlight to the new pCol
-  document.querySelectorAll('#col-sw .sw').forEach(sw=>{
-    sw.classList.toggle('on',sw.dataset.c===pCol);
-  });
+  document.querySelectorAll('#col-sw .sw').forEach(sw=>{sw.classList.toggle('on',sw.dataset.c===pCol);});
   buildGrid();
-  // Bug fix: buildGrid() wipes cv/stroke-g but the hit SVG is separate — clear both explicitly
   const hitSvg=document.getElementById('stroke-hit');if(hitSvg)hitSvg.innerHTML='';
-  // stroke-g is rebuilt inside buildGrid, so just re-add strokes to both layers
   strokes.forEach(s=>addStroke(s));
-  // Re-render all objects so shape/text SVG reflects new colours
   ol.innerHTML='';clearSel();objs.forEach(o=>renderObj(o));
   toast(isDark?'Dark mode':'Light mode');
   saveH();autoSave();
@@ -1112,7 +1134,7 @@ document.getElementById('exp-btn').addEventListener('click',async()=>{
       else{_rrect(cx,ex+p,ey+p,ew-p*2,eh-p*2,6*SC);}
       if(fc!=='none')cx.fill();cx.stroke();cx.restore();}
       else if(obj.type==='text'){if(!(obj.text||'').trim())continue;cx.save();cx.fillStyle=obj.col||pCol;cx.font=`600 ${Math.round((obj.fs||20)*SC)}px 'Caveat',cursive`;const lns=(obj.text||'').split('\n'),lh=Math.round((obj.fs||20)*SC*1.4);lns.forEach((l,i)=>cx.fillText(l,ex+4,ey+lh+i*lh));cx.restore();}
-      else if(obj.type==='img'){const imgEl=el.querySelector('img');if(imgEl&&imgEl.complete&&imgEl.naturalWidth>0){cx.save();cx.beginPath();cx.roundRect(ex,ey,ew,eh,8);cx.clip();cx.drawImage(imgEl,ex,ey,ew,eh);cx.restore();}}
+      else if(obj.type==='img'){const imgEl=el.querySelector('img');if(imgEl&&imgEl.complete&&imgEl.naturalWidth>0){cx.save();cx.beginPath();_rrect(cx,ex,ey,ew,eh,8);cx.clip();cx.drawImage(imgEl,ex,ey,ew,eh);cx.restore();}}
     }
     const a=document.createElement('a');a.download='doodleit-'+Date.now()+'.png';a.href=off.toDataURL('image/png');a.click();toast('Exported!');
   }catch(err){console.error(err);toast('Export failed: '+err.message);}
@@ -1140,7 +1162,6 @@ document.addEventListener('keydown',e=>{
     if(clipbd){
       const c=dc(clipbd);c.id='o'+(oid++);
       if(c.type==='pen'||c.type==='line'){
-        // Stroke paste: offset points/coords
         if(c.type==='pen'){c.pts=c.pts.map(p=>[p[0]+18,p[1]+18]);}
         else{c.x1+=18;c.y1+=18;c.x2+=18;c.y2+=18;}
         strokes.push(c);addStroke(c);saveH();autoSave();clearSel();selStroke(c,false);
@@ -1170,7 +1191,6 @@ document.addEventListener('keydown',e=>{
       const si=strokes.findIndex(s=>s.id===id);
       if(si>-1){removeStroke(id);strokes.splice(si,1);}
       else{
-        // Inline deletion (bypass delObj which calls saveH per-item)
         const i=objs.findIndex(x=>x.id===id);if(i>-1)objs.splice(i,1);
         const el=document.getElementById('ob-'+id);if(el)el.remove();
       }
@@ -1181,7 +1201,6 @@ document.addEventListener('keydown',e=>{
   const tm={v:'sel',p:'pen',s:'shapes',n:'sticky',t:'text',a:'line',e:'eraser'};
   if(!e.ctrlKey&&!e.metaKey&&tm[e.key]){
     if(tm[e.key]==='shapes'){
-      // Trigger the shapes popup the same way the toolbar button does
       const shBtn=document.querySelector('.tbt[data-t="shapes"]');
       if(shBtn)shBtn.click();
     } else {
@@ -1208,13 +1227,11 @@ function toast(msg){const el=document.getElementById('toast');el.textContent=msg
 // ════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════
-buildGrid();
-
 const restored=loadSaved();
 if(restored){
   document.documentElement.setAttribute('data-theme',isDark?'dark':'light');
   document.getElementById('theme-chk').checked=!isDark;
-  buildGrid();
+  buildGrid(); // rebuild with correct theme colours (replaces the initial light-mode grid)
   const hitSvg=document.getElementById('stroke-hit');if(hitSvg)hitSvg.innerHTML='';
   strokes.forEach(s=>addStroke(s));
   objs.forEach(o=>renderObj(o));
@@ -1222,7 +1239,6 @@ if(restored){
   updDot();
   document.getElementById('sz-r').value=pSz;
   document.getElementById('sz-v').textContent=pSz;
-  // Bug fix: also restore opacity slider (was always showing 100% regardless of saved pOp)
   const opSlider=document.getElementById('op-r');
   const opVal=Math.round(pOp*100);
   opSlider.value=opVal;
@@ -1231,6 +1247,7 @@ if(restored){
   toast('Board restored ✓');
   saveBadge.textContent='✓ Saved';saveBadge.classList.add('saved');
 }else{
+  buildGrid();
   TX=(vp.clientWidth-800)/2;TY=(vp.clientHeight-600)/2;
   document.getElementById('theme-chk').checked=true;
   applyT();saveH();updDot();
