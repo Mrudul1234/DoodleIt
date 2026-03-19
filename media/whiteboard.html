@@ -890,7 +890,14 @@ function updErc(clientX, clientY){
 }
 
 window.addEventListener('pointermove', e => {
-  if(tool === 'eraser') updErc(e.clientX, e.clientY);
+  if(tool === 'eraser'){
+    const overToolbar = e.target.closest('#tb, #hdr');
+    if(overToolbar){
+      erc.style.display = 'none';
+    } else {
+      updErc(e.clientX, e.clientY);
+    }
+  }
 });
 
 document.documentElement.addEventListener('mouseleave', () => {
