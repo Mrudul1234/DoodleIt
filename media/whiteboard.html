@@ -351,6 +351,10 @@ let selboxing=false,sbX0=0,sbY0=0;
 let penDn=false,penPts=[],lineDn=false,lineSX=0,lineSY=0,eraserDn=false;
 let dragging=false,dSX=0,dSY=0,dSnap={};
 let ctxO=null,pendSn=null,liveEl=null;
+// BUG FIX: tracks whichever text/sticky object is currently being written in,
+// even if it isn't part of the formal selection (selIds) any more — used so
+// the Font Size control keeps showing while the user is actively typing.
+let activeTextTarget=null;
 function mkSVG(t){return document.createElementNS('http://www.w3.org/2000/svg',t);}
 function n(v){return (+v).toFixed(1);}
 
@@ -643,6 +647,10 @@ function renderObj(obj){
     if(obj.fs)ta.style.fontSize=obj.fs+'px';
     ta.addEventListener('input',()=>{obj.text=ta.value;autoSave();});
     ta.addEventListener('pointerdown',e=>{if(tool==='sel')e.stopPropagation();});
+    // BUG FIX: mark this note as the "active" text target on focus so the
+    // Font Size control in the size popup keeps showing/working while the
+    // person is actively writing in it, even if it falls out of selIds.
+    ta.addEventListener('focus',()=>{activeTextTarget=obj;});
     const ft=document.createElement('div');ft.className='sn-foot';
     const dot=document.createElement('div');dot.className='sn-dot';dot.style.background=obj.tc;
     dot.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();});
@@ -664,7 +672,8 @@ function renderObj(obj){
       if(document.activeElement===ta){e.stopPropagation();}
       else{e.stopPropagation();ta.style.pointerEvents='none';}
     });
-    ta.addEventListener('focus',()=>{ta.style.pointerEvents='auto';ta.style.userSelect='text';ta.style.webkitUserSelect='text';_taValOnFocus=ta.value;});
+    // BUG FIX: also mark active on focus (see sticky note note above)
+    ta.addEventListener('focus',()=>{ta.style.pointerEvents='auto';ta.style.userSelect='text';ta.style.webkitUserSelect='text';_taValOnFocus=ta.value;activeTextTarget=obj;});
     let _taValOnFocus='';
     ta.addEventListener('blur',()=>{ta.style.pointerEvents='none';ta.style.userSelect='none';ta.style.webkitUserSelect='none';if(ta.value!==_taValOnFocus)saveH();});
     el.appendChild(ta);
@@ -733,8 +742,14 @@ function addHandles(obj){
   });
 }
 function remHandles(id){const el=document.getElementById('ob-'+id);if(el)el.classList.remove('sel');document.querySelectorAll('.rh-'+id).forEach(h=>h.remove());}
-function clearSel(){selIds.forEach(id=>{remHandles(id);deselStroke(id);});selIds.clear();}
-function selectObj(obj,add=false){if(!add)clearSel();selIds.add(obj.id);addHandles(obj);}
+// BUG FIX: clearing selection also clears the "active text target" so a
+// stale note doesn't keep the Font Size control showing after you truly
+// deselect / click away onto empty canvas.
+function clearSel(){selIds.forEach(id=>{remHandles(id);deselStroke(id);});selIds.clear();activeTextTarget=null;}
+// BUG FIX: whenever a text/sticky object is explicitly (re)selected, mark it
+// as the active text target too, so opening the size popup right after
+// selecting it reliably shows the Font Size row.
+function selectObj(obj,add=false){if(!add)clearSel();selIds.add(obj.id);addHandles(obj);if(obj.type==='text'||obj.type==='sticky')activeTextTarget=obj;}
 function selStroke(s,add){if(!add)clearSel();selIds.add(s.id);const g=document.getElementById('sk-'+s.id);if(g)g.style.filter='drop-shadow(0 0 5px var(--ac))';}
 function deselStroke(id){const g=document.getElementById('sk-'+id);if(g)g.style.filter='';}
 
@@ -911,7 +926,15 @@ vp.addEventListener('pointerdown',e=>{
   if(e.button!==0)return;
   if(e.detail>=2&&(tool==='pen'||tool==='line'||tool==='eraser')&&e.target.closest('#ol,#stroke-hit'))return;
   const b=ev2b(e);
-  if(tool==='sel'){clearSel();selboxing=true;sbX0=b.x;sbY0=b.y;rb.style.cssText=`display:block;left:${n(b.x)}px;top:${n(b.y)}px;width:0;height:0;`;}
+  if(tool==='sel'){
+    clearSel();selboxing=true;sbX0=b.x;sbY0=b.y;rb.style.cssText=`display:block;left:${n(b.x)}px;top:${n(b.y)}px;width:0;height:0;`;
+    // BUG FIX: capture the pointer during marquee-select so that if the
+    // mouse button is released outside the viewport (over the toolbar,
+    // header, or even outside the browser window), pointerup still fires
+    // on the viewport and the selection rectangle gets hidden properly —
+    // previously it could get "stuck" visible on the background.
+    try{vp.setPointerCapture(e.pointerId);}catch(err){}
+  }
   else if(tool==='pen'){penDn=true;penPts=[[b.x,b.y]];startLivePen();updLivePen(penPts);vp.setPointerCapture(e.pointerId);document.body.classList.add('drawing-active');}
   else if(tool==='line'){lineDn=true;lineSX=b.x;lineSY=b.y;startLiveLine(b.x,b.y);vp.setPointerCapture(e.pointerId);document.body.classList.add('drawing-active');}
   else if(tool==='eraser'){eraserDn=true;eraseAt(b.x,b.y);vp.setPointerCapture(e.pointerId);document.body.classList.add('drawing-active','eraser-active');}
@@ -1076,15 +1099,29 @@ document.getElementById('t-col').addEventListener('click',e=>{e.stopPropagation(
 document.getElementById('t-sz').addEventListener('click',e=>{e.stopPropagation();const p=document.getElementById('pop-sz');const was=p.style.display==='block';closeAll();if(!was){updSzPopup();posPopup(p,e.currentTarget);}});
 document.getElementById('sz-r').addEventListener('input',e=>{pSz=+e.target.value;document.getElementById('sz-v').textContent=e.target.value;});
 document.getElementById('op-r').addEventListener('input',e=>{pOp=+e.target.value/100;document.getElementById('op-v').textContent=e.target.value+'%';});
+// BUG FIX: Font Size now applies to whichever text/sticky objects are
+// selected AND to the currently "active" (being-written-in) note/text box,
+// so adjusting it while typing works reliably instead of only the first time.
 document.getElementById('fs-r').addEventListener('input',e=>{
   const fs=+e.target.value;document.getElementById('fs-v').textContent=fs;
-  selIds.forEach(id=>{const o=objs.find(x=>x.id===id);if(!o)return;if(o.type==='text'){o.fs=fs;const ta=document.querySelector('#ob-'+id+' .tx-ta');if(ta){ta.style.fontSize=fs+'px';autoGrow(ta,o);}}else if(o.type==='sticky'){o.fs=fs;const ta=document.querySelector('#ob-'+id+' .sn-ta');if(ta)ta.style.fontSize=fs+'px';}});
+  const targets=new Set();
+  selIds.forEach(id=>{const o=objs.find(x=>x.id===id);if(o&&(o.type==='text'||o.type==='sticky'))targets.add(o);});
+  if(activeTextTarget&&objs.includes(activeTextTarget)&&(activeTextTarget.type==='text'||activeTextTarget.type==='sticky'))targets.add(activeTextTarget);
+  targets.forEach(o=>{
+    if(o.type==='text'){o.fs=fs;const ta=document.querySelector('#ob-'+o.id+' .tx-ta');if(ta){ta.style.fontSize=fs+'px';autoGrow(ta,o);}}
+    else if(o.type==='sticky'){o.fs=fs;const ta=document.querySelector('#ob-'+o.id+' .sn-ta');if(ta)ta.style.fontSize=fs+'px';}
+  });
   autoSave();
 });
+// BUG FIX: the Font Size row now shows if EITHER a text/sticky object is
+// selected OR the person is currently focused/writing inside one, so it
+// doesn't disappear after being used once.
 function updSzPopup(){
-  const has=[...selIds].some(id=>{const o=objs.find(x=>x.id===id);return o&&(o.type==='text'||o.type==='sticky');});
+  const selFirst=[...selIds].map(id=>objs.find(x=>x.id===id)).find(o=>o&&(o.type==='text'||o.type==='sticky'));
+  const activeValid=activeTextTarget&&objs.includes(activeTextTarget)&&(activeTextTarget.type==='text'||activeTextTarget.type==='sticky');
+  const has=!!selFirst||activeValid;
   document.getElementById('fs-row').style.display=has?'flex':'none';
-  if(has){const first=[...selIds].map(id=>objs.find(x=>x.id===id)).find(o=>o&&(o.type==='text'||o.type==='sticky'));if(first){const fs=first.fs||20;document.getElementById('fs-r').value=fs;document.getElementById('fs-v').textContent=fs;}}
+  if(has){const first=selFirst||activeTextTarget;const fs=first.fs||20;document.getElementById('fs-r').value=fs;document.getElementById('fs-v').textContent=fs;}
 }
 
 const SNCS=[{bg:'#fff9c4',tc:'#5c4000'},{bg:'#ffe082',tc:'#3d2c00'},{bg:'#c8e6c9',tc:'#1b5e20'},{bg:'#b3e5fc',tc:'#01579b'},{bg:'#f8bbd0',tc:'#880e4f'},{bg:'#e1bee7',tc:'#4a148c'},{bg:'#ffccbc',tc:'#bf360c'},{bg:'#cfd8dc',tc:'#263238'}];
@@ -1128,6 +1165,22 @@ function closeAll(){['pop-col','pop-sz','pop-sh','pop-sn'].forEach(id=>document.
 ['pop-col','pop-sz','pop-sh','pop-sn','ctx'].forEach(id=>document.getElementById(id).addEventListener('pointerdown',e=>e.stopPropagation()));
 
 document.getElementById('bname').addEventListener('input',autoSave);
+// BUG FIX: while typing the board name, Ctrl/Cmd+Z (and +Y / Shift+Z for
+// redo) used to trigger the browser's native undo INSIDE the name field
+// (reverting the typed name) instead of the app's undo/redo for the board
+// content. Now these shortcuts are redirected to the app's own undo/redo,
+// leaving the board name untouched and undoing what was actually drawn.
+document.getElementById('bname').addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){
+    e.preventDefault();
+    if(e.shiftKey)redo();else undo();
+    return;
+  }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||e.key==='Y')){
+    e.preventDefault();
+    redo();
+  }
+});
 
 document.getElementById('t-img').addEventListener('click',()=>document.getElementById('file-in').click());
 document.getElementById('file-in').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=ev=>{const img=new Image();img.onload=()=>{let w=img.width,h=img.height,mx=400;if(w>mx){h=h*mx/w;w=mx;}if(h>mx){w=w*mx/h;h=mx;}const cx=(vp.clientWidth/2-TX)/SC,cy=(vp.clientHeight/2-TY)/SC;const o={id:'o'+(oid++),type:'img',x:cx-w/2,y:cy-h/2,w,h,src:ev.target.result,z:topZ()+1};objs.push(o);renderObj(o);saveH();autoSave();};img.src=ev.target.result;};rd.readAsDataURL(f);e.target.value='';});
